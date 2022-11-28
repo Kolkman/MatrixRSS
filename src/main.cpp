@@ -8,24 +8,26 @@
 #include "rssRead.hpp"
 #include <MD_Parola.h>
 #include <MD_MAX72xx.h>
-
 #define FIRMWARE_VERSION "v0.0.1-b"
 // Matrix Display params
-#ifndef ESP_PROG_CONNECTED
+
+
+
+
 #define DATA_PIN 12
 #define CS_PIN 14
 #define CLK_PIN 27
-#else
+/* When ESP Prog connected use:
 #define DATA_PIN 27
 #define CS_PIN 26
 #define CLK_PIN 25
-#endif
+*/
 #define MAX_DEVICES 6
 
 char ssid[] = WIFI_SSID; //  your network SSID (name)
 char pass[] = WIFI_PASS; // your network password
 
-#define RSSENTRIES 4
+#define RSSENTRIES 6
 #define MAX_RSS_STRING_LENGTH 128 // MAX length of the RSS input to be considdered
 #define RSS_REFRESH 600           // RSS REfresh in seconds
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
@@ -34,18 +36,17 @@ char pass[] = WIFI_PASS; // your network password
 // Globals
 MD_Parola Display = MD_Parola(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
 
-static rssRead rss;
-// const char *url  = "https://news.yahoo.co.jp/rss/topics/top-picks.xml";
-// const char *url = "https://social.secret-wg.org/@olaf.rss";
-//
 unsigned long lastDownloadTime = 0;
 unsigned long nowTime;
 bool firstProbe = true;
-const char *url = " https://www.nrc.nl/rss/";
-//const char *url = "https://feeds.nos.nl/nosnieuwsalgemeen";
-// Time keeping stuff
-// Code from
-// https://github.com/PaulStoffregen/Time/blob/master/examples/TimeNTP_ESP8266WiFi/TimeNTP_ESP8266WiFi.ino
+static const char *url = " https://www.nrc.nl/rss/";
+// const char *url = "https://feeds.nos.nl/nosnieuwsalgemeen";
+// const char *url  = "https://news.yahoo.co.jp/rss/topics/top-picks.xml";
+// const char *url = "https://social.secret-wg.org/@olaf.rss";
+//
+//  Time keeping stuff
+//  Code from
+//  https://github.com/PaulStoffregen/Time/blob/master/examples/TimeNTP_ESP8266WiFi/TimeNTP_ESP8266WiFi.ino
 static const char ntpServerName[] = "nl.pool.ntp.org";
 const int timeZone = 1; // Central European Time
 WiFiUDP Udp;
@@ -53,7 +54,9 @@ unsigned int localPort = 8888; // local port to listen for UDP packets
 time_t getNtpTime();
 void sendNTPpacket(IPAddress &address);
 
-unsigned int currentEntry;
+
+int currentEntry = 0;
+
 // Array to store news items in.
 String Entries[RSSENTRIES];
 
@@ -102,6 +105,7 @@ void loop()
   {
     if ((WiFi.status() == WL_CONNECTED))
     { // Check the current connection status
+      static rssRead rss;
       unsigned int RSSentryCount = 0;
       String dst;
       firstProbe = false;
@@ -109,11 +113,11 @@ void loop()
       rss.begin();
       lastDownloadTime = millis();
       rss.axs(url);
-    rss.dumpXml();
+      // rss.dumpXml();
       // Move to the first item.
       dst = rss.finds(String("item"));
       LOGINFO(dst.c_str());
-      while (1)
+      while ((RSSentryCount < RSSENTRIES))
       {
         dst = rss.finds(String("title"));
 
@@ -125,23 +129,25 @@ void loop()
         rawtitle.replace("]]>", "");
         rawtitle.replace("'", "\"");
         rawtitle.replace("`", "\"");
-        rawtitle.replace("\u2018","'");
+        rawtitle.replace("’", "'");
+        rawtitle.replace("‘", "'");
         rawtitle.replace("é", "e");
         rawtitle.replace("ë", "e");
         rawtitle.replace("ö", "o");
-        rawtitle.replace("í","i");
+        rawtitle.replace("í", "i");
 
         LOGINFO1("TITLE:", rawtitle);
         Entries[RSSentryCount] = rawtitle;
         RSSentryCount++;
-        if (RSSentryCount > RSSENTRIES)
-          break;
+
+        LOGINFO1("currentEntry: ", currentEntry);
       }
+      LOGINFO1("currentEntry: ", currentEntry);
       LOGINFO1("<== End rssRead:", rss.tagCnt());
     }
     LOGINFO("ClearingDisplay");
     // Display.displayClear();
-    Display.displayText("Initializing", PA_CENTER, 60, 0, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
+    Display.displayText("Reloading News", PA_CENTER, 60, 0, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
   }
 
   if (Display.displayAnimate())
@@ -149,7 +155,7 @@ void loop()
     LOGINFO("Display Reset");
     if (timeStatus() != timeNotSet)
     {
-      LOGINFO2(hour(), ":", minute());
+
       String timeString = String(hour()) + ":" + (minute() < 10 ? "0" : "") + String(minute());
       LOGINFO(timeString);
       // Display.displayClear();
@@ -158,6 +164,7 @@ void loop()
       delay(2000);
       // Display.displayClear();
     }
+    LOGINFO(Entries[currentEntry]);
     Display.displayText(Entries[currentEntry].c_str(), PA_CENTER, 40, 0, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
     currentEntry++;
     if (currentEntry >= RSSENTRIES)

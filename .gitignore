@@ -8,3 +8,4 @@ include/secrets.h
 include/README
 lib/README
 test/README
+.vscode/settings.json
