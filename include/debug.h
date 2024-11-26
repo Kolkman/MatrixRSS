@@ -20,12 +20,12 @@
 // 4: DEBUG: errors, warnings, informational and debug
 
 #ifndef _MATRIXRSS_LOGLEVEL_
-  #define _MATRIXRSS_LOGLEVEL_       3
+  #define _MATRIXRSS_LOGLEVEL_       4
 #endif
 
 /////////////////////////////////////////////////////////
 
-const char ESP_EM_MARK[] = "[ESP32Mach] ";
+const char ESP_EM_MARK[] = "[MatrixRSS] ";
 const char ESP_EM_SP[]   = " ";
 
 #define ESP_EM_PRINT        DBG_PORT_ESP_EM.print
