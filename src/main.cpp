@@ -11,10 +11,14 @@
 #include <time.h>
 // #include "rssRead.hpp"
 #include "contentcontainer.h"
+#include <AsyncTCP.h>
 #include <MD_MAX72xx.h>
 #include <MD_Parola.h>
 #include <stdio.h>
 #include <string.h>
+
+#include <ESPAsyncWebServer.h>
+#include <ElegantOTA.h>
 
 #define FIRMWARE_VERSION "v1.0.0-MQTT"
 
@@ -110,6 +114,36 @@ bool firstProbe = true;
 ContentContainer container;
 char currententry[ELEMENT_LENGTH];
 
+AsyncWebServer server(80);
+
+unsigned long ota_progress_millis = 0;
+
+void onOTAStart() {
+  // Log when OTA has started
+  LOGINFO0("OTA update started!");
+  // <Add your own code here>
+}
+
+void onOTAProgress(size_t current, size_t final) {
+  // Log every 1 second
+  if (millis() - ota_progress_millis > 1000) {
+    ota_progress_millis = millis();
+    char info[64];
+    sprintf(info,"OTA Progress Current: %u bytes, Final: %u bytes\n", current,   final) ;
+    LOGINFO0(info);
+  }
+}
+
+void onOTAEnd(bool success) {
+  // Log when OTA has finished
+  if (success) {
+    LOGINFO0("OTA update finished successfully!");
+  } else {
+    LOGERROR0("There was an error during OTA update!");
+  }
+  // <Add your own code here>
+}
+
 void setup() {
   strcpy(currententry, "Initializing");
 
@@ -126,18 +160,21 @@ void setup() {
   delay(2000);
 
   // Display.print(FIRMWARE_VERSION);
-  LOGINFO("Setting up WIFI");
+  LOGINFO0("Setting up WIFI");
+  WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
+  static String WiFiClient = String("MatrixRSS_") + String(ESP.getEfuseMac(), HEX);
+  WiFi.setHostname(WiFiClient.c_str()); // define hostname
   WiFi.begin(ssid, pass);
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
-    LOGINFO("Connecting to WiFi..");
+    LOGINFO0("Connecting to WiFi..");
   }
 
-  LOGINFO("Connected to the WiFi network");
-
-  LOGINFO("Starting UDP");
-  LOGINFO("waiting for sync");
+  LOGINFO0("Connected to the WiFi network");
+  LOGINFO0(WiFi.localIP().toString());
+  LOGINFO0("Starting UDP");
+  LOGINFO0("waiting for sync");
 
   timeClient.begin();
   delay(1000);
@@ -152,19 +189,33 @@ void setup() {
   }
 
   if (timeUpdatePass) {
-    LOGINFO("Adjust local clock");
+    LOGINFO0("Adjust local clock");
     unsigned long epoch = timeClient.getEpochTime();
     setTime(epoch);
     LOGINFO(getEpochStringByParams(CE.toLocal(now()), (char *)"%H:%M"));
   } else {
-    LOGINFO("NTP Update Failed!!");
+    LOGINFO0("NTP Update Failed!!");
   }
 
   //  setSyncProvider(getNtpTime);
   // setSyncInterval(300);
-  LOGINFO("Setting UP MQTT");
+  LOGINFO0("Setting UP MQTT");
   setupMQTT();
-  LOGINFO("MQTT DONE, TIME SYNC")
+  LOGINFO0("MQTT DONE, TIME SYNC")
+
+  LOGINFO0("setting up webserver");
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Hi! This is ElegantOTA AsyncDemo.");
+  });
+
+  ElegantOTA.begin(&server); // Start ElegantOTA
+  // ElegantOTA callbacks
+  ElegantOTA.onStart(onOTAStart);
+  ElegantOTA.onProgress(onOTAProgress);
+  ElegantOTA.onEnd(onOTAEnd);
+
+  server.begin();
+  LOGINFO0("HTTP server started");
 }
 
 void loop() {
@@ -179,14 +230,14 @@ void loop() {
       LOGINFO3("HEAP:", ESP.getFreeHeap(), "/", ESP.getHeapSize());
       char uptime[32];
       unsigned long milli = nowTime;
-      long hr= milli / 3600000;
+      long hr = milli / 3600000;
       milli = milli - 3600000 * hr;
       // 60000 milliseconds in a minute
       long min = milli / 60000;
-      milli = milli - 60000 * min;      // 1000 milliseconds in a second
+      milli = milli - 60000 * min; // 1000 milliseconds in a second
       long sec = milli / 1000;
       milli = milli - 1000 * sec;
-      sprintf(uptime,"%d:%02d:%02d",hr,min,sec);
+      sprintf(uptime, "%d:%02d:%02d", hr, min, sec);
 
       if (timeStatus() != timeNotSet) {
 
@@ -194,7 +245,7 @@ void loop() {
         // + String(minute());
         String timeString =
             getEpochStringByParams(CE.toLocal(now()), (char *)"%H:%M");
-        LOGINFO2(timeString," Uptime: ",uptime);
+        LOGINFO2(timeString, " Uptime: ", uptime);
         // Display.displayClear();
         Display.setTextAlignment(PA_CENTER);
         Display.print(timeString);

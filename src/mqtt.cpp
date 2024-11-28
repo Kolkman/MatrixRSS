@@ -22,8 +22,8 @@ double mqttTemperature;
 
 void MQTT_reconnect() {
   if (!client.connected()) {
-    LOGINFO("Attempting MQTT connection...");
-    static String MQTTClient = String("MatrixRSS_") + String(esp_random(), HEX);
+    LOGINFO0(M"Attempting MQTT connection...");
+    static String MQTTClient = String("MatrixRSS_") + String(ESP.getEfuseMac(), HEX);
     LOGINFO1("MQTT Client  name:", MQTTClient);
     if (client.connect(MQTTClient.c_str(), MQTT_USER, MQTT_PASS)) {
       LOGINFO("connected");
@@ -37,7 +37,7 @@ void MQTT_reconnect() {
       LOGINFO1("failed, rc=", client.state());
     }
   }
-  LOGDEBUG("MQTT_reconnect Returns");
+  LOGDEBUG0("MQTT_reconnect Returns");
 }
 
 void MQTT_callback(char *topic, byte *payload, unsigned int length) {
@@ -55,7 +55,7 @@ void MQTT_callback(char *topic, byte *payload, unsigned int length) {
     msg[ELEMENT_LENGTH - 1] = '\0'; // to be sure
 
     mqttTemperature = atof(msg);
-    LOGINFO(mqttTemperature);
+    LOGINFO0(mqttTemperature);
   }
 
   if (strcmp(topic, MQTT_NEWS) == 0) {
@@ -97,7 +97,7 @@ void setupMQTT() {
 void loopMQTT() {
   for (int i = 0; i < MAX_CONNECTION_RETRIES && !client.connected(); i++) {
 
-    LOGINFO("MQTT Reconnection Attempt");
+    LOGINFO)("MQTT Reconnection Attempt");
     MQTT_reconnect();
     delay(100);
   }
