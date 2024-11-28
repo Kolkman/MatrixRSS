@@ -1,7 +1,7 @@
 #include "contentcontainer.h"
+#include "debug.h"
 #include <stdio.h>
 #include <string.h>
-#include "debug.h"
 
 ContentContainer::ContentContainer() {
   filled = 0;
@@ -13,8 +13,6 @@ ContentContainer::ContentContainer() {
   return;
 }
 
-
-
 void ContentContainer::init() {
   filled = 0;
   current = 0;
@@ -25,11 +23,11 @@ void ContentContainer::init() {
   return;
 }
 
-
 void ContentContainer::addcontent(char *addstring) {
-  strncpy(content[filled], addstring, ELEMENT_LENGTH -1);
-  content[filled][ELEMENT_LENGTH-1] = '\0';
-  if (filled++ == MAX_ELEMENTS) {
+  strncpy(content[filled], addstring, ELEMENT_LENGTH - 1);
+  content[filled][ELEMENT_LENGTH - 1] = '\0';
+  filled++;
+  if (filled == MAX_ELEMENTS) {
     filled = 0;
   }
   return;
@@ -37,8 +35,9 @@ void ContentContainer::addcontent(char *addstring) {
 
 void ContentContainer::readcontent(char *input) {
   strncpy(input, content[current], ELEMENT_LENGTH - 1);
-  input[ELEMENT_LENGTH-1] = '\0';
-  if (current++ == MAX_ELEMENTS) {
+  input[ELEMENT_LENGTH - 1] = '\0';
+  current++;
+  if (current == MAX_ELEMENTS) {
     current = 0;
   }
 

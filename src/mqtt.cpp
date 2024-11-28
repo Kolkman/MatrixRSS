@@ -47,14 +47,14 @@ void MQTT_callback(char *topic, byte *payload, unsigned int length) {
     // obvioulsy state of my red LED
 
     char msg[ELEMENT_LENGTH];
-    for (int i = 0; i < length && i < ELEMENT_LENGTH; i++) {
+    for (int i = 0; i < min(length, (unsigned int)ELEMENT_LENGTH); i++) {
       LOGDEBUG0((char)payload[i]);
       msg[i] = (char)payload[i];
     }
-    msg[ELEMENT_LENGTH - 1] = '\0';
-    LOGDEBUG("'");
 
-    mqttTemperature =atof(msg);
+    msg[ELEMENT_LENGTH - 1] = '\0'; // to be sure
+
+    mqttTemperature = atof(msg);
     LOGINFO(mqttTemperature);
   }
 
@@ -62,14 +62,27 @@ void MQTT_callback(char *topic, byte *payload, unsigned int length) {
     // obvioulsy state of my red LED
 
     char msg[ELEMENT_LENGTH];
-    for (int i = 0; i < min(length,(unsigned int)ELEMENT_LENGTH); i++) {
+
+    unsigned int j = 0;
+    for (unsigned int i = 0; i < length && j < ELEMENT_LENGTH; i++) {
+
+      if ((char)payload[i] == '\n') {
+        continue;
+      }
+      if ((char)payload[i] == '\r') {
+        continue;
+      }
+      if ((char)payload[i] == '\t') {
+        continue;
+      }
+      msg[j] = (char)payload[i];
+
       LOGDEBUG0((char)payload[i]);
-      msg[i] = (char)payload[i];
+      j++;
     }
 
-    msg[min(length, (unsigned int)(ELEMENT_LENGTH-1))] = '\0';
-    LOGDEBUG("'");
-
+    msg[min(j, (unsigned int)(ELEMENT_LENGTH - 1))] = '\0';
+    LOGDEBUG('\n');
     container.addcontent(msg);
     LOGINFO(msg);
   }
