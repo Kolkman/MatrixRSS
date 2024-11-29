@@ -1,0 +1,74 @@
+/*
+*  RssMatrix.css
+*  (c) Olaf Kolkman
+*  Needs cleanup
+*/
+
+
+:root {
+    --bodyBackground: rgb(10, 71, 128);
+    --baseColor: rgb(236, 225, 248);
+    --bgcolorHighlight: #160868;
+    --switchOnColor: rgb(8, 99, 39);
+    --blockBackground: #bfcdda;
+    --bgcolorHighlight2: #424d8c;
+    --bgcolorHighlight3: #8a8595;
+    --buttonColor: rgb(23, 16, 85);
+    --buttonHoverColor: rgb(63, 51, 103);
+    --buttonPressColor: rgb(231, 114, 19);
+    --boxShadow: 1px 4px 5px #777;
+
+}
+
+
+A:link {
+    color: rgb(95, 62, 1);
+}
+
+A:visited {
+    color: rgb(112, 84, 16);
+}
+
+A:hover {
+    color: #705208;
+}
+
+body {
+    color: var(baseColor);
+}
+
+h1 {
+    color: var(--baseColor);
+    background-color: black;
+    font-size: x-large;
+    padding: 10px;
+    letter-spacing: .4em;
+    margin-bottom: 1em;
+    text-align: center;
+
+    font-family: "Sixtyfour Convergence", sans-serif;
+    font-optical-sizing: auto;
+    font-weight: 400;
+    font-style: normal;
+    font-variation-settings:
+      "BLED" 0,
+      "SCAN" 0,
+      "XELA" 0,
+      "YELA" 0;
+
+}
+
+
+#firmware {
+    font-family: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
+    font-weight: normal;
+    font-size: xx-small;
+    color: var(--bgcolorHighlight2);
+    margin-bottom: 1em;
+    text-transform: lowercase;
+    padding-top: 2ex;
+    border-top: 1px solid;
+    border-top-color: var(--bgcolorHighlight);
+}
+
+

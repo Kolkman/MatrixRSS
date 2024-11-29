@@ -16,11 +16,8 @@
 #include <MD_Parola.h>
 #include <stdio.h>
 #include <string.h>
+#include "webinterface.h"
 
-#include <ESPAsyncWebServer.h>
-#include <ElegantOTA.h>
-
-#define FIRMWARE_VERSION "v1.0.0-MQTT"
 
 #define DISPLAY_TIMEOUT 60
 // Matrix Display params
@@ -114,35 +111,9 @@ bool firstProbe = true;
 ContentContainer container;
 char currententry[ELEMENT_LENGTH];
 
-AsyncWebServer server(80);
+webInterface web;
 
 unsigned long ota_progress_millis = 0;
-
-void onOTAStart() {
-  // Log when OTA has started
-  LOGINFO0("OTA update started!");
-  // <Add your own code here>
-}
-
-void onOTAProgress(size_t current, size_t final) {
-  // Log every 1 second
-  if (millis() - ota_progress_millis > 1000) {
-    ota_progress_millis = millis();
-    char info[64];
-    sprintf(info,"OTA Progress Current: %u bytes, Final: %u bytes\n", current,   final) ;
-    LOGINFO0(info);
-  }
-}
-
-void onOTAEnd(bool success) {
-  // Log when OTA has finished
-  if (success) {
-    LOGINFO0("OTA update finished successfully!");
-  } else {
-    LOGERROR0("There was an error during OTA update!");
-  }
-  // <Add your own code here>
-}
 
 void setup() {
   strcpy(currententry, "Initializing");
@@ -156,13 +127,14 @@ void setup() {
 
   delay(2000);
   Display.setTextAlignment(PA_CENTER);
-  Display.print(FIRMWARE_VERSION);
+  Display.print(FIRMWAREVERSION);
   delay(2000);
 
-  // Display.print(FIRMWARE_VERSION);
+
   LOGINFO0("Setting up WIFI");
   WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
-  static String WiFiClient = String("MatrixRSS_") + String(ESP.getEfuseMac(), HEX);
+  static String WiFiClient =
+      String("MatrixRSS_") + String(ESP.getEfuseMac(), HEX);
   WiFi.setHostname(WiFiClient.c_str()); // define hostname
   WiFi.begin(ssid, pass);
 
@@ -204,17 +176,11 @@ void setup() {
   LOGINFO0("MQTT DONE, TIME SYNC")
 
   LOGINFO0("setting up webserver");
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Hi! This is ElegantOTA AsyncDemo.");
-  });
 
-  ElegantOTA.begin(&server); // Start ElegantOTA
-  // ElegantOTA callbacks
-  ElegantOTA.onStart(onOTAStart);
-  ElegantOTA.onProgress(onOTAProgress);
-  ElegantOTA.onEnd(onOTAEnd);
+  web.setupWebSrv();
 
-  server.begin();
+
+
   LOGINFO0("HTTP server started");
 }
 
