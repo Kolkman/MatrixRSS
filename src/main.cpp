@@ -11,13 +11,12 @@
 #include <time.h>
 // #include "rssRead.hpp"
 #include "contentcontainer.h"
+#include "webinterface.h"
 #include <AsyncTCP.h>
 #include <MD_MAX72xx.h>
 #include <MD_Parola.h>
 #include <stdio.h>
 #include <string.h>
-#include "webinterface.h"
-
 
 #define DISPLAY_TIMEOUT 60
 // Matrix Display params
@@ -130,11 +129,25 @@ void setup() {
   Display.print(FIRMWAREVERSION);
   delay(2000);
 
-
   LOGINFO0("Setting up WIFI");
-  WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
+
   static String WiFiClient =
-      String("MatrixRSS_") + String(ESP.getEfuseMac(), HEX);
+      String("MatrixRSS_") + String(ESP.getEfuseMac(), HEX).substring(0, 4);
+
+  // This check is copied from ESPAsync_WifiManager
+  // Check cores/esp32/esp_arduino_version.h and cores/esp32/core_version.h
+#if (defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 2))
+  WiFi.setHostname(WiFiClient.c_str());
+#else
+  // Still have bug in ESP32_S2 for old core. If using WiFi.setHostname() =>
+  // WiFi.localIP() always = 255.255.255.255
+  if (String(ARDUINO_BOARD) != "ESP32S2_DEV") {
+    // See https://github.com/espressif/arduino-esp32/issues/2537
+    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
+    WiFi.setHostname(WiFiClient.c_str());
+  }
+#endif
+
   WiFi.setHostname(WiFiClient.c_str()); // define hostname
   WiFi.begin(ssid, pass);
 
@@ -179,8 +192,6 @@ void setup() {
 
   web.setupWebSrv();
 
-
-
   LOGINFO0("HTTP server started");
 }
 
@@ -218,9 +229,11 @@ void loop() {
         delay(2000);
         // Display.displayClear();
       }
-      Display.print(String(mqttTemperature, 1) + " \xB0"
-                                                 "C"); // mqtt.h
-      delay(2000);
+      if (mqttTemperature < 100) {
+        Display.print(String(mqttTemperature, 1) + " \xB0"
+                                                   "C"); // mqtt.h
+        delay(2000);
+      }
       LOGINFO1("Displaying", currententry)
       unsigned long startDisplayTime = millis();
       Display.displayText(currententry, PA_CENTER, 20, 0, PA_SCROLL_LEFT,

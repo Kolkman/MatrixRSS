@@ -26,7 +26,7 @@ double mqttTemperature;
 void MQTT_reconnect() {
   if (!client.connected()) {
     LOGINFO0("Attempting MQTT connection...");
-    static String MQTTClient = String("MatrixRSS_") + String(ESP.getEfuseMac(), HEX);
+    static String MQTTClient = String("MatrixRSS_") + String(ESP.getEfuseMac(), HEX).substring(0,4);
     LOGINFO1("MQTT Client  name:", MQTTClient);
     if (client.connect(MQTTClient.c_str(), MQTT_USER, MQTT_PASS)) {
       LOGINFO("connected");
@@ -92,7 +92,7 @@ void MQTT_callback(char *topic, byte *payload, unsigned int length) {
 }
 
 void setupMQTT() {
-  mqttTemperature = 0.0;
+  mqttTemperature = 150.0;
   client.setServer(MQTT_HOST, MQTT_PORT);
   client.setCallback(MQTT_callback);
 }

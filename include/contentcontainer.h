@@ -3,18 +3,13 @@
 #ifndef CONTENTCONTAINER_H
 #define CONTENTCONTAINER_H
 
-
 #include "Arduino.h"
 #include <array>
 
-#define MAX_ELEMENTS 10        // Maximum  number of elements in the Elements array
-#define ELEMENT_LENGTH 256      // Maximum length of HTML tags
-
-
+#define MAX_ELEMENTS 10    // Maximum  number of elements in the Elements array
+#define ELEMENT_LENGTH 256 // Maximum length of HTML tags
 
 typedef std::array<char[ELEMENT_LENGTH], MAX_ELEMENTS> contentArray;
-
-
 
 class ContentContainer {
 public:
@@ -25,6 +20,10 @@ public:
   unsigned int current;
   contentArray content;
   unsigned int filled;
+
+private:
+  void utf8Ascii(char *s);
+  uint8_t utf8Ascii(uint8_t ascii);
 };
 
 #endif

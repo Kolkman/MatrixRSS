@@ -33,8 +33,13 @@ A:hover {
     color: #705208;
 }
 
+
 body {
-    color: var(baseColor);
+    background: var(--bodyBackground);
+}
+body div {
+    color: var(--baseColor);
+
 }
 
 h1 {
@@ -58,17 +63,15 @@ h1 {
 
 }
 
-
-#firmware {
-    font-family: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
-    font-weight: normal;
-    font-size: xx-small;
-    color: var(--bgcolorHighlight2);
-    margin-bottom: 1em;
-    text-transform: lowercase;
-    padding-top: 2ex;
-    border-top: 1px solid;
-    border-top-color: var(--bgcolorHighlight);
-}
-
-
+.firmware {
+    font-family:'Gill Sans','Gill Sans MT',Calibri,'Trebuchet MS',sans-serif;
+    font-weight:normal;
+    font-size:x-small;
+    color: #d0c8ba;
+    margin-bottom:1em;
+    text-transform:lowercase;
+    padding-top:2ex;
+    border-top:1px solid;
+    border-top-color:#bfcdda;
+  }
+  
