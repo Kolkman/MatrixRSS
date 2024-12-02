@@ -1,4 +1,5 @@
 #include "mqtt.h"
+#include "MatrixRSS.h"
 #include "contentcontainer.h"
 #include "debug.h"
 #include "secrets.h"
@@ -19,16 +20,14 @@ extern ContentContainer container;
 WiFiClient espClient;
 PubSubClient client(espClient);
 double mqttTemperature;
-
-
-
+unsigned long previouspub = 0;
 
 void MQTT_reconnect() {
   if (!client.connected()) {
     LOGINFO0("Attempting MQTT connection...");
-    static String MQTTClient = String("MatrixRSS_") + String(ESP.getEfuseMac(), HEX).substring(0,4);
-    LOGINFO1("MQTT Client  name:", MQTTClient);
-    if (client.connect(MQTTClient.c_str(), MQTT_USER, MQTT_PASS)) {
+
+    LOGINFO1("MQTT Client  name:", Hostname);
+    if (client.connect(Hostname.c_str(), MQTT_USER, MQTT_PASS)) {
       LOGINFO("connected");
       LOGINFO1("MQTT subscribing to: ", MQTT_TEMP);
       client.subscribe(MQTT_TEMP); // We should be OK with QOS 0
@@ -98,11 +97,19 @@ void setupMQTT() {
 }
 
 void loopMQTT() {
+  unsigned long timestamp = millis();
   for (int i = 0; i < MAX_CONNECTION_RETRIES && !client.connected(); i++) {
 
     LOGINFO0("MQTT Reconnection Attempt");
     MQTT_reconnect();
     delay(100);
+  }
+
+  if (((timestamp - previouspub) > 60 * 1000) || (previouspub > timestamp)) {
+    char buffer[256];
+    size_t n = serializeJson(statusObject, buffer);
+    client.publish(Hostname.c_str(), buffer, n);
+    previouspub = timestamp;
   }
   client.loop();
 }

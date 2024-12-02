@@ -1,4 +1,5 @@
 
+#include "MatrixRSS.h"
 #include "debug.h"
 #include "mqtt.h"
 #include "secrets.h"
@@ -12,6 +13,7 @@
 // #include "rssRead.hpp"
 #include "contentcontainer.h"
 #include "webinterface.h"
+#include <ArduinoJson.h>
 #include <AsyncTCP.h>
 #include <MD_MAX72xx.h>
 #include <MD_Parola.h>
@@ -29,7 +31,10 @@
 #define CS_PIN 26
 #define CLK_PIN 25
 */
+#ifndef MAX_DEVICES 
 #define MAX_DEVICES 12
+#endif
+
 
 char ssid[] = WIFI_SSID; //  your network SSID (name) from secrets.h
 char pass[] = WIFI_PASS; // your network password
@@ -109,6 +114,8 @@ bool firstProbe = true;
 
 ContentContainer container;
 char currententry[ELEMENT_LENGTH];
+String IPaddress;
+JsonDocument statusObject;
 
 webInterface web;
 
@@ -131,33 +138,29 @@ void setup() {
 
   LOGINFO0("Setting up WIFI");
 
-  static String WiFiClient =
-      String("MatrixRSS_") + String(ESP.getEfuseMac(), HEX).substring(0, 4);
-
   // This check is copied from ESPAsync_WifiManager
   // Check cores/esp32/esp_arduino_version.h and cores/esp32/core_version.h
 #if (defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 2))
-  WiFi.setHostname(WiFiClient.c_str());
+  WiFi.setHostname(Hostname.c_str());
 #else
   // Still have bug in ESP32_S2 for old core. If using WiFi.setHostname() =>
   // WiFi.localIP() always = 255.255.255.255
   if (String(ARDUINO_BOARD) != "ESP32S2_DEV") {
     // See https://github.com/espressif/arduino-esp32/issues/2537
     WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
-    WiFi.setHostname(WiFiClient.c_str());
+    WiFi.setHostname(Hostname.c_str());
   }
 #endif
 
-  WiFi.setHostname(WiFiClient.c_str()); // define hostname
   WiFi.begin(ssid, pass);
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     LOGINFO0("Connecting to WiFi..");
   }
-
+IPaddress=WiFi.localIP().toString();
   LOGINFO0("Connected to the WiFi network");
-  LOGINFO0(WiFi.localIP().toString());
+  LOGINFO0(IPaddress);
   LOGINFO0("Starting UDP");
   LOGINFO0("waiting for sync");
 
@@ -205,6 +208,9 @@ void loop() {
     if (strlen(currententry)) {
       timeClient.update();
       LOGINFO3("HEAP:", ESP.getFreeHeap(), "/", ESP.getHeapSize());
+      statusObject["freeheap"] = ESP.getFreeHeap();
+      statusObject["heapsize"] = ESP.getHeapSize();
+
       char uptime[32];
       unsigned long milli = nowTime;
       long hr = milli / 3600000;
@@ -215,6 +221,7 @@ void loop() {
       long sec = milli / 1000;
       milli = milli - 1000 * sec;
       sprintf(uptime, "%d:%02d:%02d", hr, min, sec);
+      statusObject["uptime"] = uptime;
 
       if (timeStatus() != timeNotSet) {
 
@@ -235,6 +242,9 @@ void loop() {
         delay(2000);
       }
       LOGINFO1("Displaying", currententry)
+  
+      statusObject["ip_address"] = IPaddress;;
+      
       unsigned long startDisplayTime = millis();
       Display.displayText(currententry, PA_CENTER, 20, 0, PA_SCROLL_LEFT,
                           PA_SCROLL_LEFT);
