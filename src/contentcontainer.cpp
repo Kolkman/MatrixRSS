@@ -176,7 +176,7 @@ uint32_t u8decode(u8chr_t c) {
 
 void ContentContainer::utf8AsciiEnhanced(char *s) {
 
-  LOGINFO0("HIEEROOOOO");
+  LOGWARN1("Parsing:", s);
   // In place conversion UTF-8 string to Extended ASCII
   // The extended ASCII string is always shorter.
   // uint8_t c;
@@ -204,8 +204,17 @@ void ContentContainer::utf8AsciiEnhanced(char *s) {
       // NO-BREAK SPACE
       s[j] = ' ';
       j++;
-    } else if (u8len == 2 && (decoded >> 8) == 0xC2) {
-      s[j] = (0x00ff & decoded);
+
+    } else if (u8len == 2 && (encoding >> 8) == 0xC2) {
+      // see
+      // https://github.com/MajicDesigns/MD_Parola/blob/main/examples/Parola_UFT-8_Display/Parola_UFT-8_Display.ino
+      s[j] = (0x00ff & encoding);
+      j++;
+    } else if (u8len == 2 && (encoding >> 8) == 0xC3) {
+
+      // see
+      // https://github.com/MajicDesigns/MD_Parola/blob/main/examples/Parola_UFT-8_Display/Parola_UFT-8_Display.ino
+      s[j] = (0x00ff & encoding) | 0x00C0;
       j++;
     } else if (decoded == 0x20AC) {
       s[j] = 0x80; // Euro symbol special case
@@ -224,7 +233,8 @@ void ContentContainer::utf8AsciiEnhanced(char *s) {
     }
 
     else {
-      sprintf(logmsg, "  0x%x NOT HANDLED ", u8decode(encoding));
+
+      sprintf(logmsg, "  0x%x (%d) NOT HANDLED \n", decoded ,u8len);
       LOGWARN(logmsg);
     }
     sprintf(logmsg, "  0x%x \n", s[j]);

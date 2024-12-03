@@ -106,9 +106,9 @@ void loopMQTT() {
   }
 
   if (((timestamp - previouspub) > 60 * 1000) || (previouspub > timestamp)) {
-    char buffer[256];
-    size_t n = serializeJson(statusObject, buffer);
-    client.publish(Hostname.c_str(), buffer, n);
+    char pubbuf[256];
+    size_t n = serializeJson(statusObject, pubbuf);
+    client.publish(Hostname.c_str(), pubbuf, n);
     previouspub = timestamp;
   }
   client.loop();

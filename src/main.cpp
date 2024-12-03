@@ -46,7 +46,7 @@ static const char ntpServerName[] = "nl.pool.ntp.org";
 const int timeZone = 1; // Central European Time
 WiFiUDP ntpUDP;
 unsigned int localPort = 8888; // local port to listen for UDP packets
-
+const char firmwareversion[]=FIRMWAREVERSION;
 /**
  * Input time in epoch format and return tm time format
  * by Renzo Mischianti <www.mischianti.org>
@@ -210,6 +210,7 @@ void loop() {
       LOGINFO3("HEAP:", ESP.getFreeHeap(), "/", ESP.getHeapSize());
       statusObject["freeheap"] = ESP.getFreeHeap();
       statusObject["heapsize"] = ESP.getHeapSize();
+      statusObject["firmware"] = firmwareversion;
 
       char uptime[32];
       unsigned long milli = nowTime;
@@ -222,7 +223,7 @@ void loop() {
       milli = milli - 1000 * sec;
       sprintf(uptime, "%d:%02d:%02d", hr, min, sec);
       statusObject["uptime"] = uptime;
-
+      statusObject["uptime_mili"] = milli;
       if (timeStatus() != timeNotSet) {
 
         // String timeString = String(hour()) + ":" + (minute() < 10 ? "0" : "")
