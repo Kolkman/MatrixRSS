@@ -1,18 +1,27 @@
-#include <Arduino.h>
-#include "secrets.h"
+
+#include "MatrixRSS.h"
 #include "debug.h"
+#include "mqtt.h"
+#include "secrets.h"
+#include <Arduino.h>
+#include <NTPClient.h>
 #include <SPI.h>
-#include <WiFi.h>
 #include <TimeLib.h>
-
-#include "rssRead.hpp"
-#include <MD_Parola.h>
+#include <Timezone.h>
+#include <WiFi.h>
+#include <time.h>
+// #include "rssRead.hpp"
+#include "contentcontainer.h"
+#include "webinterface.h"
+#include <ArduinoJson.h>
+#include <AsyncTCP.h>
 #include <MD_MAX72xx.h>
-#define FIRMWARE_VERSION "v0.0.1-b"
+#include <MD_Parola.h>
+#include <stdio.h>
+#include <string.h>
+
+#define DISPLAY_TIMEOUT 60
 // Matrix Display params
-
-
-
 
 #define DATA_PIN 12
 #define CS_PIN 14
@@ -22,210 +31,230 @@
 #define CS_PIN 26
 #define CLK_PIN 25
 */
-#define MAX_DEVICES 6
+#ifndef MAX_DEVICES 
+#define MAX_DEVICES 12
+#endif
 
-char ssid[] = WIFI_SSID; //  your network SSID (name)
+
+char ssid[] = WIFI_SSID; //  your network SSID (name) from secrets.h
 char pass[] = WIFI_PASS; // your network password
 
-#define RSSENTRIES 6
-#define MAX_RSS_STRING_LENGTH 128 // MAX length of the RSS input to be considdered
-#define RSS_REFRESH 600           // RSS REfresh in seconds
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
-//#define HARDWARE_TYPE MD_MAX72XX::GENERIC_HW
+// #define HARDWARE_TYPE MD_MAX72XX::GENERIC_HW
+
+static const char ntpServerName[] = "nl.pool.ntp.org";
+const int timeZone = 1; // Central European Time
+WiFiUDP ntpUDP;
+unsigned int localPort = 8888; // local port to listen for UDP packets
+const char firmwareversion[]=FIRMWAREVERSION;
+/**
+ * Input time in epoch format and return tm time format
+ * by Renzo Mischianti <www.mischianti.org>
+ */
+static tm getDateTimeByParams(unsigned long time) {
+  struct tm *newtime;
+  const time_t tim = time;
+  newtime = localtime(&tim);
+  return *newtime;
+}
+
+/**
+ * Input tm time format and return String with format pattern
+ * by Renzo Mischianti <www.mischianti.org>
+ */
+static String
+getDateTimeStringByParams(tm *newtime,
+                          char *pattern = (char *)"%d/%m/%Y %H:%M:%S") {
+  char buffer[30];
+  strftime(buffer, 30, pattern, newtime);
+  return buffer;
+}
+
+/**
+ * Input time in epoch format format and return String with format pattern
+ * by Renzo Mischianti <www.mischianti.org>
+ */
+static String
+getEpochStringByParams(unsigned long time,
+                       char *pattern = (char *)"%d/%m/%Y %H:%M:%S") {
+  //    struct tm *newtime;
+  tm newtime;
+  newtime = getDateTimeByParams(time);
+  return getDateTimeStringByParams(&newtime, pattern);
+}
+
+// By default 'pool.ntp.org' is used with 60 seconds update interval and
+// no offset
+// NTPClient timeClient(ntpUDP);
+
+// You can specify the time server pool and the offset, (in seconds)
+// additionaly you can specify the update interval (in milliseconds).
+int GTMOffset = 0;
+NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", GTMOffset * 60 * 60,
+                     60 * 60 * 1000);
+
+// Central European Time (Frankfurt, Paris)
+TimeChangeRule CEST = {"CEST", Last, Sun,
+                       Mar,    2,    120}; // Central European Summer Time
+TimeChangeRule CET = {"CET ", Last, Sun,
+                      Oct,    3,    60}; // Central European Standard Time
+Timezone CE(CEST, CET);
+
+// declarations
+time_t getNtpTime();
+void sendNTPpacket(IPAddress &);
 
 // Globals
-MD_Parola Display = MD_Parola(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
-
+MD_Parola Display =
+    MD_Parola(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
+extern double mqttTemperature;
 unsigned long lastDownloadTime = 0;
 unsigned long nowTime;
 bool firstProbe = true;
-static const char *url = " https://www.nrc.nl/rss/";
-// const char *url = "https://feeds.nos.nl/nosnieuwsalgemeen";
-// const char *url  = "https://news.yahoo.co.jp/rss/topics/top-picks.xml";
-// const char *url = "https://social.secret-wg.org/@olaf.rss";
-//
-//  Time keeping stuff
-//  Code from
-//  https://github.com/PaulStoffregen/Time/blob/master/examples/TimeNTP_ESP8266WiFi/TimeNTP_ESP8266WiFi.ino
-static const char ntpServerName[] = "nl.pool.ntp.org";
-const int timeZone = 1; // Central European Time
-WiFiUDP Udp;
-unsigned int localPort = 8888; // local port to listen for UDP packets
-time_t getNtpTime();
-void sendNTPpacket(IPAddress &address);
 
+ContentContainer container;
+char currententry[ELEMENT_LENGTH];
+String IPaddress;
+JsonDocument statusObject;
 
-int currentEntry = 0;
+webInterface web;
 
-// Array to store news items in.
-String Entries[RSSENTRIES];
+unsigned long ota_progress_millis = 0;
 
-void setup()
-{
-  currentEntry = 0;
-  for (int i; i < RSSENTRIES; i++)
-  {
+void setup() {
+  strcpy(currententry, "Initializing");
 
-    Entries[i] = "-";
-  }
   Serial.begin(115200);
   delay(1000);
-
+  container.init();
   Display.begin();
   Display.setIntensity(0);
   Display.displayClear();
 
   delay(2000);
-  Display.print(FIRMWARE_VERSION);
+  Display.setTextAlignment(PA_CENTER);
+  Display.print(FIRMWAREVERSION);
   delay(2000);
 
-  // Display.print(FIRMWARE_VERSION);
-  LOGINFO("Setting up WIFI");
+  LOGINFO0("Setting up WIFI");
+
+  // This check is copied from ESPAsync_WifiManager
+  // Check cores/esp32/esp_arduino_version.h and cores/esp32/core_version.h
+#if (defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 2))
+  WiFi.setHostname(Hostname.c_str());
+#else
+  // Still have bug in ESP32_S2 for old core. If using WiFi.setHostname() =>
+  // WiFi.localIP() always = 255.255.255.255
+  if (String(ARDUINO_BOARD) != "ESP32S2_DEV") {
+    // See https://github.com/espressif/arduino-esp32/issues/2537
+    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
+    WiFi.setHostname(Hostname.c_str());
+  }
+#endif
+
   WiFi.begin(ssid, pass);
 
-  while (WiFi.status() != WL_CONNECTED)
-  {
+  while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
-    LOGINFO("Connecting to WiFi..");
+    LOGINFO0("Connecting to WiFi..");
+  }
+IPaddress=WiFi.localIP().toString();
+  LOGINFO0("Connected to the WiFi network");
+  LOGINFO0(IPaddress);
+  LOGINFO0("Starting UDP");
+  LOGINFO0("waiting for sync");
+
+  timeClient.begin();
+  delay(1000);
+  bool timeUpdatePass = true;
+  for (int n = 0; n < 20; n++) {
+    if (timeClient.update()) {
+      timeUpdatePass = true;
+
+      break;
+    }
+    delay(20);
   }
 
-  LOGINFO("Connected to the WiFi network");
-  LOGINFO("Starting UDP");
-  Udp.begin(localPort);
-  LOGINFO("waiting for sync");
-  setSyncProvider(getNtpTime);
-  setSyncInterval(300);
+  if (timeUpdatePass) {
+    LOGINFO0("Adjust local clock");
+    unsigned long epoch = timeClient.getEpochTime();
+    setTime(epoch);
+    LOGINFO(getEpochStringByParams(CE.toLocal(now()), (char *)"%H:%M"));
+  } else {
+    LOGINFO0("NTP Update Failed!!");
+  }
+
+  //  setSyncProvider(getNtpTime);
+  // setSyncInterval(300);
+  LOGINFO0("Setting UP MQTT");
+  setupMQTT();
+  LOGINFO0("MQTT DONE, TIME SYNC")
+
+  LOGINFO0("setting up webserver");
+
+  web.setupWebSrv();
+
+  LOGINFO0("HTTP server started");
 }
 
-void loop()
-{
+void loop() {
   nowTime = millis();
+  loopMQTT();
 
-  if (firstProbe or (max(nowTime, lastDownloadTime) - min(nowTime, lastDownloadTime)) >= RSS_REFRESH * 1000 or lastDownloadTime > nowTime)
-  {
-    if ((WiFi.status() == WL_CONNECTED))
-    { // Check the current connection status
-      static rssRead rss;
-      unsigned int RSSentryCount = 0;
-      String dst;
-      firstProbe = false;
-      LOGINFO("Start rssRead ==>");
-      rss.begin();
-      lastDownloadTime = millis();
-      rss.axs(url);
-      // rss.dumpXml();
-      // Move to the first item.
-      dst = rss.finds(String("item"));
-      LOGINFO(dst.c_str());
-      while ((RSSentryCount < RSSENTRIES))
-      {
-        dst = rss.finds(String("title"));
+  if (Display.displayAnimate()) {
+    container.readcontent(currententry);
 
-        if (!dst.length())
-          break;
+    if (strlen(currententry)) {
+      timeClient.update();
+      LOGINFO3("HEAP:", ESP.getFreeHeap(), "/", ESP.getHeapSize());
+      statusObject["freeheap"] = ESP.getFreeHeap();
+      statusObject["heapsize"] = ESP.getHeapSize();
+      statusObject["firmware"] = firmwareversion;
 
-        String rawtitle = dst;
-        rawtitle.replace("<![CDATA[", "");
-        rawtitle.replace("]]>", "");
-        rawtitle.replace("'", "\"");
-        rawtitle.replace("`", "\"");
-        rawtitle.replace("’", "'");
-        rawtitle.replace("‘", "'");
-        rawtitle.replace("é", "e");
-        rawtitle.replace("ë", "e");
-        rawtitle.replace("ö", "o");
-        rawtitle.replace("í", "i");
+      char uptime[32];
+      unsigned long milli = nowTime;
+      long hr = milli / 3600000;
+      milli = milli - 3600000 * hr;
+      // 60000 milliseconds in a minute
+      long min = milli / 60000;
+      milli = milli - 60000 * min; // 1000 milliseconds in a second
+      long sec = milli / 1000;
+      milli = milli - 1000 * sec;
+      sprintf(uptime, "%d:%02d:%02d", hr, min, sec);
+      statusObject["uptime"] = uptime;
+      statusObject["uptime_mili"] = milli;
+      if (timeStatus() != timeNotSet) {
 
-        LOGINFO1("TITLE:", rawtitle);
-        Entries[RSSentryCount] = rawtitle;
-        RSSentryCount++;
-
-        LOGINFO1("currentEntry: ", currentEntry);
+        // String timeString = String(hour()) + ":" + (minute() < 10 ? "0" : "")
+        // + String(minute());
+        String timeString =
+            getEpochStringByParams(CE.toLocal(now()), (char *)"%H:%M");
+        LOGINFO2(timeString, " Uptime: ", uptime);
+        // Display.displayClear();
+        Display.setTextAlignment(PA_CENTER);
+        Display.print(timeString);
+        delay(2000);
+        // Display.displayClear();
       }
-      LOGINFO1("currentEntry: ", currentEntry);
-      LOGINFO1("<== End rssRead:", rss.tagCnt());
-    }
-    LOGINFO("ClearingDisplay");
-    // Display.displayClear();
-    Display.displayText("Reloading News", PA_CENTER, 60, 0, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
-  }
+      if (mqttTemperature < 100) {
+        Display.print(String(mqttTemperature, 1) + " \xB0"
+                                                   "C"); // mqtt.h
+        delay(2000);
+      }
+      LOGINFO1("Displaying", currententry)
+  
+      statusObject["ip_address"] = IPaddress;;
+      
+      unsigned long startDisplayTime = millis();
+      Display.displayText(currententry, PA_CENTER, 20, 0, PA_SCROLL_LEFT,
+                          PA_SCROLL_LEFT);
+      if (millis() > startDisplayTime &&
+          now() - startDisplayTime > DISPLAY_TIMEOUT * 1000) {
+        // Takes a very long time to display
 
-  if (Display.displayAnimate())
-  {
-    LOGINFO("Display Reset");
-    if (timeStatus() != timeNotSet)
-    {
-
-      String timeString = String(hour()) + ":" + (minute() < 10 ? "0" : "") + String(minute());
-      LOGINFO(timeString);
-      // Display.displayClear();
-      Display.setTextAlignment(PA_CENTER);
-      Display.print(timeString);
-      delay(2000);
-      // Display.displayClear();
-    }
-    LOGINFO(Entries[currentEntry]);
-    Display.displayText(Entries[currentEntry].c_str(), PA_CENTER, 40, 0, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
-    currentEntry++;
-    if (currentEntry >= RSSENTRIES)
-      currentEntry = 0;
-  }
-}
-/*-------- NTP code ----------*/
-const int NTP_PACKET_SIZE = 48;     // NTP time is in the first 48 bytes of message
-byte packetBuffer[NTP_PACKET_SIZE]; // buffer to hold incoming & outgoing packets
-
-time_t getNtpTime()
-{
-  IPAddress ntpServerIP; // NTP server's ip address
-
-  while (Udp.parsePacket() > 0)
-    ; // discard any previously received packets
-  LOGINFO("Transmit NTP Request");
-  // get a random server from the pool
-  WiFi.hostByName(ntpServerName, ntpServerIP);
-  LOGINFO2(ntpServerName, ": ", ntpServerIP);
-  sendNTPpacket(ntpServerIP);
-  uint32_t beginWait = millis();
-  while (millis() - beginWait < 1500)
-  {
-    int size = Udp.parsePacket();
-    if (size >= NTP_PACKET_SIZE)
-    {
-      LOGINFO("Receive NTP Response");
-      Udp.read(packetBuffer, NTP_PACKET_SIZE); // read packet into the buffer
-      unsigned long secsSince1900;
-      // convert four bytes starting at location 40 to a long integer
-      secsSince1900 = (unsigned long)packetBuffer[40] << 24;
-      secsSince1900 |= (unsigned long)packetBuffer[41] << 16;
-      secsSince1900 |= (unsigned long)packetBuffer[42] << 8;
-      secsSince1900 |= (unsigned long)packetBuffer[43];
-      return secsSince1900 - 2208988800UL + timeZone * SECS_PER_HOUR;
+        ESP.restart();
+      }
     }
   }
-  LOGINFO("No NTP Response :-(");
-  return 0; // return 0 if unable to get the time
-}
-
-// send an NTP request to the time server at the given address
-void sendNTPpacket(IPAddress &address)
-{
-  // set all bytes in the buffer to 0
-  memset(packetBuffer, 0, NTP_PACKET_SIZE);
-  // Initialize values needed to form NTP request
-  // (see URL above for details on the packets)
-  packetBuffer[0] = 0b11100011; // LI, Version, Mode
-  packetBuffer[1] = 0;          // Stratum, or type of clock
-  packetBuffer[2] = 6;          // Polling Interval
-  packetBuffer[3] = 0xEC;       // Peer Clock Precision
-  // 8 bytes of zero for Root Delay & Root Dispersion
-  packetBuffer[12] = 49;
-  packetBuffer[13] = 0x4E;
-  packetBuffer[14] = 49;
-  packetBuffer[15] = 52;
-  // all NTP fields have been given values, now
-  // you can send a packet requesting a timestamp:
-  Udp.beginPacket(address, 123); // NTP requests are to port 123
-  Udp.write(packetBuffer, NTP_PACKET_SIZE);
-  Udp.endPacket();
 }

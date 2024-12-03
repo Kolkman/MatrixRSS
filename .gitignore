@@ -9,3 +9,8 @@ include/README
 lib/README
 test/README
 .vscode/settings.json
+.DS_Store
+include/pages/RssMatrix.css.h
+WEBSources/update-min.html
+WEBSources/RssMatrix-min.css
+include/pages/update.html.h

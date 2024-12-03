@@ -1,0 +1,48 @@
+#####
+## Blueprint to poll RSS feeds more than once per hour
+## make sure polling is disabled in the system options of the intergrations's entries
+##
+#######
+blueprint:
+  name: Poll a feedreader event
+  description: Poll the lates from  an RSS feed.
+  author: Olaf Kolkman
+  domain: automation
+  input:
+    event_feed:
+      name: Feedreader event
+      description: Entity that triggers the feedreader event
+      selector:
+        entity:
+          filter:
+            - domain: event
+    period:
+      name: period
+      description: The period by which the feed should be pulled (/X with X in minutes)
+      selector:
+        number:
+          max: 120
+          min: 1
+      default: "15"
+    startminute:
+      description: The script will run every 'period' tarting at the specified. This allows multiple periodic pollings not to interfere by using different minutes at which to start the cycle
+      default: "00:01:00"
+      selector:
+        time:
+
+trigger_variables:
+  my_period: !input period
+  my_start: !input startminute
+
+triggers:
+  - trigger: time_pattern
+    minutes: /1
+conditions:
+  - condition: template
+    value_template: "{{ ((now()-today_at(my_start)).seconds/60) | int % my_period == 0 }}"
+
+actions:
+  - action: homeassistant.update_entity
+    data:
+      entity_id: !input event_feed
+mode: queued
