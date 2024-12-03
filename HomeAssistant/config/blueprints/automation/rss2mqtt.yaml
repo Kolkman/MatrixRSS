@@ -21,7 +21,7 @@ blueprint:
       description: MQTT Topic under which the news gets published
       selector:
         text:
-      default: "RSS/news"
+      default: "rss/news"
 
 mode: queued
 
