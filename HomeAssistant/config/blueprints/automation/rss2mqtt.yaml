@@ -1,0 +1,44 @@
+##########
+# Author: Olaf Kolkman
+# Make sure polling is disabled in the Feedreader Integrations Entries' system settings
+##########
+
+blueprint:
+  name: RSS 2 MQTT
+  description: Publishes titles in an RSS feed on an MQTT channel.
+  author: Olaf Kolkman
+  input:
+    rss_feed_url:
+      name: RSS Feed URL
+      description: Enter your RSS feed URL -use the same as for creating the event
+      selector:
+        text:
+      default: ""
+
+
+    mqtt_topic:
+      name: mqtt_topic
+      description: MQTT Topic under which the news gets published
+      selector:
+        text:
+      default: "rss/news"
+
+mode: queued
+
+trigger_variables:
+  feed_url: !input rss_feed_url
+
+trigger:
+  - trigger: event
+    event_type: feedreader
+    event_data:
+      feed_url: "{{ feed_url }}"
+
+variables:
+  my_mqtt_topic: !input mqtt_topic
+actions:
+
+  - action: mqtt.publish
+    data:
+      topic: "{{ my_mqtt_topic }}"
+      payload: "{{ trigger.event.data.title | truncate(255, true, '...') }}"

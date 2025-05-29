@@ -226,6 +226,10 @@ void ContentContainer::utf8AsciiEnhanced(char *s) {
       // RIGHT SINGLE QUOTATION MARK or LEFT SINGLE QUOTATION MARK
       s[j] = '\'';
       j++;
+    } else if (decoded == 0x201c || decoded == 0x201D) {
+      // RIGHT DOUBLE QUOTATION MARK or LEFT DOUBLE QUOTATION MARK
+      s[j] = '"';
+      j++;
     } else if (0x200f < decoded && decoded < 0x2016) {
       // hyphens
       s[j] = '-';
@@ -234,7 +238,7 @@ void ContentContainer::utf8AsciiEnhanced(char *s) {
 
     else {
 
-      sprintf(logmsg, "  0x%x (%d) NOT HANDLED \n", decoded ,u8len);
+      sprintf(logmsg, "  0x%x (%d) NOT HANDLED \n", decoded, u8len);
       LOGWARN(logmsg);
     }
     sprintf(logmsg, "  0x%x \n", s[j]);
