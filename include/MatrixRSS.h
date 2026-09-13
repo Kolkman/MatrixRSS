@@ -8,7 +8,7 @@
 
 
 static String Hostname =
-    String("MatrixRSS_") + String(ESP.getEfuseMac(), HEX).substring(0, 4);
+    String("Mtrx_") + String(ESP.getEfuseMac(), HEX).substring(0, 4);
 
 
 //global

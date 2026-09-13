@@ -164,8 +164,12 @@ IPaddress=WiFi.localIP().toString();
   LOGINFO0(IPaddress);
   LOGINFO0("Starting UDP");
   LOGINFO0("waiting for sync");
-
+  
   timeClient.begin();
+
+  Display.setTextAlignment(PA_CENTER);
+  Display.print(WiFi.getHostname());
+  delay(2000);
   delay(1000);
   bool timeUpdatePass = true;
   for (int n = 0; n < 20; n++) {
