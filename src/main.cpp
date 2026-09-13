@@ -108,6 +108,7 @@ void sendNTPpacket(IPAddress &);
 MD_Parola Display =
     MD_Parola(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
 extern double mqttTemperature;
+extern double mqttHumidity;
 unsigned long lastDownloadTime = 0;
 unsigned long nowTime;
 bool firstProbe = true;
@@ -131,11 +132,11 @@ void setup() {
   Display.setIntensity(0);
   Display.displayClear();
 
-  delay(2000);
+  delay(DISPLAY_DELAY);
   Display.setTextAlignment(PA_CENTER);
   Display.print(FIRMWAREVERSION);
   LOGINFO0("Display initialized");
-  delay(2000);
+  delay(DISPLAY_DELAY);
 
   LOGINFO0("Setting up WIFI");
 
@@ -170,7 +171,7 @@ IPaddress=WiFi.localIP().toString();
   Display.setTextAlignment(PA_CENTER);
   Display.print(WiFi.getHostname());
   delay(2000);
-  delay(1000);
+
   bool timeUpdatePass = true;
   for (int n = 0; n < 20; n++) {
     if (timeClient.update()) {
@@ -216,6 +217,8 @@ void loop() {
       statusObject["freeheap"] = ESP.getFreeHeap();
       statusObject["heapsize"] = ESP.getHeapSize();
       statusObject["firmware"] = firmwareversion;
+      statusObject["temperature"] = mqttTemperature;
+      statusObject["humidity"] = mqttHumidity;
 
       char uptime[32];
       unsigned long milli = nowTime;
@@ -239,14 +242,15 @@ void loop() {
         // Display.displayClear();
         Display.setTextAlignment(PA_CENTER);
         Display.print(timeString);
-        delay(2000);
+        delay(DISPLAY_DELAY);
         // Display.displayClear();
       }
-      if (mqttTemperature < 100) {
-        Display.print(String(mqttTemperature, 1) + " \xB0"
-                                                   "C"); // mqtt.h
-        delay(2000);
+      if (mqttTemperature < 100 && mqttHumidity < 100) {
+        Display.print("Buiten: " + String(mqttTemperature, 1) + "\xB0 / " +
+                      String(mqttHumidity, 0) + "%");
+        delay(DISPLAY_DELAY);
       }
+      Display.print("");
       LOGINFO1("Displaying", currententry)
   
       statusObject["ip_address"] = IPaddress;;

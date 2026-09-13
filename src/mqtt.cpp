@@ -13,6 +13,7 @@
 #include <PubSubClient.h>
 
 #define MQTT_TEMP "home/buitenTemp"
+#define MQTT_HUMIDITY "home/buitenHumidity"
 #define MQTT_NEWS "rss/news"
 
 extern ContentContainer container;
@@ -20,6 +21,7 @@ extern ContentContainer container;
 WiFiClient espClient;
 PubSubClient client(espClient);
 double mqttTemperature;
+double mqttHumidity;
 unsigned long previouspub = 0;
 
 void MQTT_reconnect() {
@@ -31,6 +33,8 @@ void MQTT_reconnect() {
       LOGINFO("connected");
       LOGINFO1("MQTT subscribing to: ", MQTT_TEMP);
       client.subscribe(MQTT_TEMP); // We should be OK with QOS 0
+      LOGINFO1("MQTT subscribing to: ", MQTT_HUMIDITY);
+      client.subscribe(MQTT_HUMIDITY); // We should be OK with QOS 0
       LOGINFO1("MQTT subscribing to: ", MQTT_NEWS);
       client.subscribe(MQTT_NEWS); // We should be OK with QOS 0
       LOGINFO("MQTT Subscription Passed")
@@ -58,6 +62,15 @@ void MQTT_callback(char *topic, byte *payload, unsigned int length) {
 
     mqttTemperature = atof(msg);
     LOGINFO0(mqttTemperature);
+  }
+
+  if (strcmp(topic, MQTT_HUMIDITY) == 0) {
+    char msg[ELEMENT_LENGTH];
+    unsigned int messageLength = min(length, (unsigned int)(ELEMENT_LENGTH - 1));
+    memcpy(msg, payload, messageLength);
+    msg[messageLength] = '\0';
+    mqttHumidity = atof(msg);
+    LOGINFO0(mqttHumidity);
   }
 
   if (strcmp(topic, MQTT_NEWS) == 0) {
@@ -92,6 +105,7 @@ void MQTT_callback(char *topic, byte *payload, unsigned int length) {
 
 void setupMQTT() {
   mqttTemperature = 150.0;
+  mqttHumidity = 150.0;
   client.setServer(MQTT_HOST, MQTT_PORT);
   client.setCallback(MQTT_callback);
 }

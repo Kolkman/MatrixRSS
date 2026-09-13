@@ -6,9 +6,9 @@
 
 #include <ArduinoJson.h>
 
-
+#define DISPLAY_DELAY 2500 // Delay in microseconds, to hold display after message.
 static String Hostname =
-    String("Mtrx_") + String(ESP.getEfuseMac(), HEX).substring(0, 4);
+    String("Matrix_") + String(ESP.getEfuseMac(), HEX).substring(0, 4);
 
 
 //global
