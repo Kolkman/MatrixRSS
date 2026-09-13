@@ -38,21 +38,27 @@ void webInterface::setupWebSrv() {
 
 
   server->onNotFound(
-      std::bind(&webInterface::handleNotFound, this, std::placeholders::_1));
+      ArRequestHandlerFunction(
+        std::bind(&webInterface::handleNotFound, this, std::placeholders::_1)));
   server->on("/", HTTP_GET,
-             std::bind(&webInterface::handleRoot, this, std::placeholders::_1));
+         ArRequestHandlerFunction(
+           std::bind(&webInterface::handleRoot, this, std::placeholders::_1)));
   server->on(
       "/reset", HTTP_GET,
-      std::bind(&webInterface::handleReset, this, std::placeholders::_1));
+      ArRequestHandlerFunction(
+        [this](AsyncWebServerRequest *request) { handleReset(request); }));
   server->on(
       "/index.html", HTTP_GET,
-      std::bind(&webInterface::handleIndex, this, std::placeholders::_1));
+      ArRequestHandlerFunction(
+        std::bind(&webInterface::handleIndex, this, std::placeholders::_1)));
 
   
   // respond to GET requests on URL /heap
-  server->on("/heap", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", String(ESP.getFreeHeap()));
-  });
+  server->on(
+      "/heap", HTTP_GET,
+      ArRequestHandlerFunction([](AsyncWebServerRequest *request) {
+        request->send(200, "text/plain", String(ESP.getFreeHeap()));
+      }));
 
   InitPages(); // sets some default pages.
 

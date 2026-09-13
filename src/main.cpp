@@ -134,6 +134,7 @@ void setup() {
   delay(2000);
   Display.setTextAlignment(PA_CENTER);
   Display.print(FIRMWAREVERSION);
+  LOGINFO0("Display initialized");
   delay(2000);
 
   LOGINFO0("Setting up WIFI");
