@@ -12,16 +12,20 @@
 #define MQTT_MAX_PACKET_SIZE 512
 #include <PubSubClient.h>
 
-#define MQTT_TEMP "home/buitenTemp"
-#define MQTT_HUMIDITY "home/buitenHumidity"
+#define MQTT_OUTDOOR_TEMP "home/buitenTemp"
+#define MQTT_OUTDOOR_HUMIDITY "home/buitenHumidity"
+#define MQTT_INDOOR_TEMP "home/binnenTemp"
+#define MQTT_INDOOR_HUMIDITY "home/binnenHumidity"
 #define MQTT_NEWS "rss/news"
 
 extern ContentContainer container;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
-double mqttTemperature;
-double mqttHumidity;
+double mqttOutdoorTemperature;
+double mqttOutdoorHumidity;
+double mqttIndoorTemperature;
+double mqttIndoorHumidity;
 unsigned long previouspub = 0;
 
 void MQTT_reconnect() {
@@ -31,10 +35,14 @@ void MQTT_reconnect() {
     LOGINFO1("MQTT Client  name:", Hostname);
     if (client.connect(Hostname.c_str(), MQTT_USER, MQTT_PASS)) {
       LOGINFO("connected");
-      LOGINFO1("MQTT subscribing to: ", MQTT_TEMP);
-      client.subscribe(MQTT_TEMP); // We should be OK with QOS 0
-      LOGINFO1("MQTT subscribing to: ", MQTT_HUMIDITY);
-      client.subscribe(MQTT_HUMIDITY); // We should be OK with QOS 0
+      LOGINFO1("MQTT subscribing to: ", MQTT_OUTDOOR_TEMP);
+      client.subscribe(MQTT_OUTDOOR_TEMP); // We should be OK with QOS 0
+      LOGINFO1("MQTT subscribing to: ", MQTT_OUTDOOR_HUMIDITY);
+      client.subscribe(MQTT_OUTDOOR_HUMIDITY); // We should be OK with QOS 0
+      LOGINFO1("MQTT subscribing to: ", MQTT_INDOOR_TEMP);
+      client.subscribe(MQTT_INDOOR_TEMP); // We should be OK with QOS 0
+      LOGINFO1("MQTT subscribing to: ", MQTT_INDOOR_HUMIDITY);
+      client.subscribe(MQTT_INDOOR_HUMIDITY); // We should be OK with QOS 0
       LOGINFO1("MQTT subscribing to: ", MQTT_NEWS);
       client.subscribe(MQTT_NEWS); // We should be OK with QOS 0
       LOGINFO("MQTT Subscription Passed")
@@ -49,7 +57,7 @@ void MQTT_reconnect() {
 void MQTT_callback(char *topic, byte *payload, unsigned int length) {
   LOGDEBUG2("Message arrived [", topic, "] '");
 
-  if (strcmp(topic, MQTT_TEMP) == 0) {
+  if (strcmp(topic, MQTT_OUTDOOR_TEMP) == 0) {
     // obvioulsy state of my red LED
 
     char msg[ELEMENT_LENGTH];
@@ -60,17 +68,35 @@ void MQTT_callback(char *topic, byte *payload, unsigned int length) {
 
     msg[ELEMENT_LENGTH - 1] = '\0'; // to be sure
 
-    mqttTemperature = atof(msg);
-    LOGINFO0(mqttTemperature);
+    mqttOutdoorTemperature = atof(msg);
+    LOGINFO0(mqttOutdoorTemperature);
   }
 
-  if (strcmp(topic, MQTT_HUMIDITY) == 0) {
+  if (strcmp(topic, MQTT_OUTDOOR_HUMIDITY) == 0) {
     char msg[ELEMENT_LENGTH];
     unsigned int messageLength = min(length, (unsigned int)(ELEMENT_LENGTH - 1));
     memcpy(msg, payload, messageLength);
     msg[messageLength] = '\0';
-    mqttHumidity = atof(msg);
-    LOGINFO0(mqttHumidity);
+    mqttOutdoorHumidity = atof(msg);
+    LOGINFO0(mqttOutdoorHumidity);
+  }
+
+  if (strcmp(topic, MQTT_INDOOR_TEMP) == 0) {
+    char msg[ELEMENT_LENGTH];
+    unsigned int messageLength = min(length, (unsigned int)(ELEMENT_LENGTH - 1));
+    memcpy(msg, payload, messageLength);
+    msg[messageLength] = '\0';
+    mqttIndoorTemperature = atof(msg);
+    LOGINFO0(mqttIndoorTemperature);
+  }
+
+  if (strcmp(topic, MQTT_INDOOR_HUMIDITY) == 0) {
+    char msg[ELEMENT_LENGTH];
+    unsigned int messageLength = min(length, (unsigned int)(ELEMENT_LENGTH - 1));
+    memcpy(msg, payload, messageLength);
+    msg[messageLength] = '\0';
+    mqttIndoorHumidity = atof(msg);
+    LOGINFO0(mqttIndoorHumidity);
   }
 
   if (strcmp(topic, MQTT_NEWS) == 0) {
@@ -104,8 +130,10 @@ void MQTT_callback(char *topic, byte *payload, unsigned int length) {
 }
 
 void setupMQTT() {
-  mqttTemperature = 150.0;
-  mqttHumidity = 150.0;
+  mqttOutdoorTemperature = 150.0;
+  mqttOutdoorHumidity = 150.0;
+  mqttIndoorTemperature = 150.0;
+  mqttIndoorHumidity = 150.0;
   client.setServer(MQTT_HOST, MQTT_PORT);
   client.setCallback(MQTT_callback);
 }

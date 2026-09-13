@@ -107,8 +107,10 @@ void sendNTPpacket(IPAddress &);
 // Globals
 MD_Parola Display =
     MD_Parola(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
-extern double mqttTemperature;
-extern double mqttHumidity;
+extern double mqttOutdoorTemperature;
+extern double mqttOutdoorHumidity;
+extern double mqttIndoorTemperature;
+extern double mqttIndoorHumidity;
 unsigned long lastDownloadTime = 0;
 unsigned long nowTime;
 bool firstProbe = true;
@@ -217,8 +219,10 @@ void loop() {
       statusObject["freeheap"] = ESP.getFreeHeap();
       statusObject["heapsize"] = ESP.getHeapSize();
       statusObject["firmware"] = firmwareversion;
-      statusObject["temperature"] = mqttTemperature;
-      statusObject["humidity"] = mqttHumidity;
+      statusObject["temperature"] = mqttOutdoorTemperature;
+      statusObject["humidity"] = mqttOutdoorHumidity;
+      statusObject["indoor_temperature"] = mqttIndoorTemperature;
+      statusObject["indoor_humidity"] = mqttIndoorHumidity;
 
       char uptime[32];
       unsigned long milli = nowTime;
@@ -245,9 +249,19 @@ void loop() {
         delay(DISPLAY_DELAY);
         // Display.displayClear();
       }
-      if (mqttTemperature < 100 && mqttHumidity < 100) {
-        Display.print("Buiten: " + String(mqttTemperature, 1) + "\xB0 / " +
-                      String(mqttHumidity, 0) + "%");
+      LOGINFO1("outdoorTemp",mqttOutdoorTemperature);
+      LOGINFO1("outdoorHumidity",mqttOutdoorHumidity);
+      if (mqttOutdoorTemperature < 100 && mqttOutdoorHumidity < 101) {
+        Display.print("Buiten: " + String(mqttOutdoorTemperature, 1) + "\xB0 / " +
+                      String(mqttOutdoorHumidity, 0) + "%");
+        delay(DISPLAY_DELAY);
+      }
+      LOGINFO1("indoorTemp",mqttIndoorTemperature);
+      LOGINFO1("indoorHumidity",mqttIndoorHumidity);
+   
+      if (mqttIndoorTemperature < 100 && mqttIndoorHumidity < 101) {
+        Display.print("Binnen: " + String(mqttIndoorTemperature, 1) +
+                      "\xB0 / " + String(mqttIndoorHumidity, 0) + "%");
         delay(DISPLAY_DELAY);
       }
       Display.print("");

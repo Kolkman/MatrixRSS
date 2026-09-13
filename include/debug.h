@@ -15,8 +15,8 @@
 // Change _MATRIXRSS_LOGLEVEL_ to set tracing and logging verbosity
 // 0: DISABLED: no logging
 // 1: ERROR: errors
-// 2: WARN: errors and warnings
-// 3: INFO: errors, warnings and informational (default)
+// 2: WARN: errors and warnings (default)
+// 3: INFO: errors, warnings and informational 
 // 4: DEBUG: errors, warnings, informational and debug
 
 #ifndef _MATRIXRSS_LOGLEVEL_
