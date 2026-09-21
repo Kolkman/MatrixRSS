@@ -4,7 +4,9 @@
 #include "debug.h"
 #include "secrets.h"
 #include <Arduino.h>
+#include <Preferences.h>
 #include <SPI.h>
+#include <WiFi.h>
 #include <WiFiClient.h>
 #include <algorithm>
 
@@ -18,6 +20,41 @@
 #define MQTT_INDOOR_HUMIDITY "home/binnenHumidity"
 #define MQTT_NEWS "rss/news"
 
+namespace {
+
+constexpr char kMQTTPrefsNamespace[] = "mqtt";
+constexpr char kMQTTHostKey[] = "host";
+constexpr char kMQTTPortKey[] = "port";
+constexpr char kMQTTUserKey[] = "user";
+constexpr char kMQTTPassKey[] = "pass";
+
+MQTTSettings mqttSettings;
+
+void copySetting(char *target, size_t targetSize, const String &value) {
+  value.toCharArray(target, targetSize);
+}
+
+void resetMQTTSettingsToDefaults() {
+  copySetting(mqttSettings.host, sizeof(mqttSettings.host), MQTT_HOST);
+  mqttSettings.port = static_cast<uint16_t>(MQTT_PORT);
+  copySetting(mqttSettings.user, sizeof(mqttSettings.user), MQTT_USER);
+  copySetting(mqttSettings.pass, sizeof(mqttSettings.pass), MQTT_PASS);
+}
+
+uint16_t parsePort(const char *portValue) {
+  if (portValue == nullptr || strlen(portValue) == 0) {
+    return static_cast<uint16_t>(MQTT_PORT);
+  }
+
+  const long parsedPort = strtol(portValue, nullptr, 10);
+  if (parsedPort <= 0 || parsedPort > 65535) {
+    return static_cast<uint16_t>(MQTT_PORT);
+  }
+  return static_cast<uint16_t>(parsedPort);
+}
+
+}
+
 extern ContentContainer container;
 
 WiFiClient espClient;
@@ -27,13 +64,49 @@ double mqttOutdoorHumidity;
 double mqttIndoorTemperature;
 double mqttIndoorHumidity;
 unsigned long previouspub = 0;
+unsigned long mqttFailureSince = 0;
+
+static void clearMQTTFailureWindow() { mqttFailureSince = 0; }
+
+static void trackMQTTFailure(int mqttState) {
+  if (WiFi.status() != WL_CONNECTED) {
+    clearMQTTFailureWindow();
+    return;
+  }
+
+  if (mqttState != MQTT_CONNECTION_TIMEOUT &&
+      mqttState != MQTT_CONNECTION_LOST &&
+      mqttState != MQTT_CONNECT_FAILED) {
+    clearMQTTFailureWindow();
+    return;
+  }
+
+  if (mqttFailureSince == 0) {
+    mqttFailureSince = millis();
+    return;
+  }
+
+  if (millis() - mqttFailureSince < MQTT_PORTAL_FAILOVER_MS) {
+    return;
+  }
+
+  requestConfigPortalReboot("MQTT socket failure");
+}
 
 void MQTT_reconnect() {
   if (!client.connected()) {
     LOGINFO0("Attempting MQTT connection...");
 
     LOGINFO1("MQTT Client  name:", Hostname);
-    if (client.connect(Hostname.c_str(), MQTT_USER, MQTT_PASS)) {
+    const bool useAuth = strlen(mqttSettings.user) > 0;
+    const bool connected = useAuth
+                               ? client.connect(Hostname.c_str(),
+                                                mqttSettings.user,
+                                                mqttSettings.pass)
+                               : client.connect(Hostname.c_str());
+
+    if (connected) {
+      clearMQTTFailureWindow();
       LOGINFO("connected");
       LOGINFO1("MQTT subscribing to: ", MQTT_OUTDOOR_TEMP);
       client.subscribe(MQTT_OUTDOOR_TEMP); // We should be OK with QOS 0
@@ -48,7 +121,9 @@ void MQTT_reconnect() {
       LOGINFO("MQTT Subscription Passed")
 
     } else {
-      LOGINFO1("failed, rc=", client.state());
+      const int mqttState = client.state();
+      LOGINFO1("failed, rc=", mqttState);
+      trackMQTTFailure(mqttState);
     }
   }
   LOGDEBUG0("MQTT_reconnect Returns");
@@ -129,12 +204,49 @@ void MQTT_callback(char *topic, byte *payload, unsigned int length) {
   }
 }
 
+void loadMQTTSettings() {
+  resetMQTTSettingsToDefaults();
+
+  Preferences preferences;
+  if (!preferences.begin(kMQTTPrefsNamespace, true)) {
+    return;
+  }
+
+  copySetting(mqttSettings.host, sizeof(mqttSettings.host),
+              preferences.getString(kMQTTHostKey, mqttSettings.host));
+  mqttSettings.port =
+      static_cast<uint16_t>(preferences.getUShort(kMQTTPortKey, mqttSettings.port));
+  copySetting(mqttSettings.user, sizeof(mqttSettings.user),
+              preferences.getString(kMQTTUserKey, mqttSettings.user));
+  copySetting(mqttSettings.pass, sizeof(mqttSettings.pass),
+              preferences.getString(kMQTTPassKey, mqttSettings.pass));
+  preferences.end();
+}
+
+const MQTTSettings &getMQTTSettings() { return mqttSettings; }
+
+void saveMQTTSettings(const char *host, const char *port, const char *user,
+                      const char *pass) {
+  Preferences preferences;
+  if (!preferences.begin(kMQTTPrefsNamespace, false)) {
+    return;
+  }
+
+  preferences.putString(kMQTTHostKey, host == nullptr ? "" : host);
+  preferences.putUShort(kMQTTPortKey, parsePort(port));
+  preferences.putString(kMQTTUserKey, user == nullptr ? "" : user);
+  preferences.putString(kMQTTPassKey, pass == nullptr ? "" : pass);
+  preferences.end();
+
+  loadMQTTSettings();
+}
+
 void setupMQTT() {
   mqttOutdoorTemperature = 150.0;
   mqttOutdoorHumidity = 150.0;
   mqttIndoorTemperature = 150.0;
   mqttIndoorHumidity = 150.0;
-  client.setServer(MQTT_HOST, MQTT_PORT);
+  client.setServer(mqttSettings.host, mqttSettings.port);
   client.setCallback(MQTT_callback);
 }
 
@@ -145,6 +257,10 @@ void loopMQTT() {
     LOGINFO0("MQTT Reconnection Attempt");
     MQTT_reconnect();
     delay(100);
+  }
+
+  if (client.connected()) {
+    clearMQTTFailureWindow();
   }
 
   if (((timestamp - previouspub) > 60 * 1000) || (previouspub > timestamp)) {

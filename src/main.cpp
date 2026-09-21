@@ -17,6 +17,8 @@
 #include <AsyncTCP.h>
 #include <MD_MAX72xx.h>
 #include <MD_Parola.h>
+#include <Preferences.h>
+#include <esp_wifi.h>
 #include <WiFiManager.h>
 #include <stdio.h>
 #include <string.h>
@@ -128,6 +130,48 @@ webInterface web;
 unsigned long ota_progress_millis = 0;
 WiFiManager wifiManager;
 
+namespace {
+
+constexpr char kWiFiPrefsNamespace[] = "wifi";
+constexpr char kForcePortalKey[] = "force_portal";
+
+bool consumeForcedPortalMode() {
+  Preferences preferences;
+  if (!preferences.begin(kWiFiPrefsNamespace, false)) {
+    return false;
+  }
+
+  const bool forcePortal = preferences.getBool(kForcePortalKey, false);
+  if (forcePortal) {
+    preferences.remove(kForcePortalKey);
+  }
+  preferences.end();
+  return forcePortal;
+}
+
+void setForcedPortalMode(bool enabled) {
+  Preferences preferences;
+  if (!preferences.begin(kWiFiPrefsNamespace, false)) {
+    return;
+  }
+
+  if (enabled) {
+    preferences.putBool(kForcePortalKey, true);
+  } else {
+    preferences.remove(kForcePortalKey);
+  }
+  preferences.end();
+}
+
+}
+
+WiFiManagerParameter mqttHostParam("mqtt_host", "MQTT host", "", 63);
+WiFiManagerParameter mqttPortParam("mqtt_port", "MQTT port", "", 6,
+                                   "type=number min=1 max=65535");
+WiFiManagerParameter mqttUserParam("mqtt_user", "MQTT user", "", 63);
+WiFiManagerParameter mqttPassParam("mqtt_pass", "MQTT password", "", 63,
+                                   "type=password");
+
 static String portalSSID() {
   return Hostname + String("_Setup");
 }
@@ -142,11 +186,58 @@ static void showWifiSetupPortal(const String &apName) {
   IPaddress = "192.168.4.1";
 }
 
+void requestConfigPortalReboot(const char *reason) {
+  LOGWARN1("Rebooting to config portal:", reason);
+  setForcedPortalMode(true);
+  Display.setTextAlignment(PA_CENTER);
+  Display.print("MQTT failed");
+  delay(1000);
+  Display.print("Open setup");
+  delay(1000);
+  ESP.restart();
+}
+
 static void onConfigPortalStarted(WiFiManager *manager) {
   (void)manager;
   const String apName = portalSSID();
   LOGWARN1("WiFi fallback AP active:", apName);
   showWifiSetupPortal(apName);
+}
+
+static void onWiFiConfigSaved() {
+  saveMQTTSettings(mqttHostParam.getValue(), mqttPortParam.getValue(),
+                   mqttUserParam.getValue(), mqttPassParam.getValue());
+  LOGINFO0("Saved MQTT settings from config portal");
+}
+
+static void logWiFiCredentials(const char *label, const String &networkSsid,
+                               const String &networkPass) {
+  Serial.print("[WiFi Debug] ");
+  Serial.print(label);
+  Serial.print(' ');
+  Serial.println(networkSsid);
+  Serial.print("[WiFi Debug] WiFi password: ");
+  Serial.println(networkPass);
+}
+
+static bool readStoredWiFiCredentials(String &storedSsid,
+                                      String &storedPassword) {
+  wifi_config_t wifiConfig = {};
+  if (esp_wifi_get_config(WIFI_IF_STA, &wifiConfig) != ESP_OK) {
+    return false;
+  }
+
+  char ssidBuffer[sizeof(wifiConfig.sta.ssid) + 1];
+  char passwordBuffer[sizeof(wifiConfig.sta.password) + 1];
+  memcpy(ssidBuffer, wifiConfig.sta.ssid, sizeof(wifiConfig.sta.ssid));
+  memcpy(passwordBuffer, wifiConfig.sta.password,
+         sizeof(wifiConfig.sta.password));
+  ssidBuffer[sizeof(wifiConfig.sta.ssid)] = '\0';
+  passwordBuffer[sizeof(wifiConfig.sta.password)] = '\0';
+
+  storedSsid = String(ssidBuffer);
+  storedPassword = String(passwordBuffer);
+  return !storedSsid.isEmpty();
 }
 
 static bool waitForWiFiConnection(unsigned long attempts,
@@ -156,7 +247,10 @@ static bool waitForWiFiConnection(unsigned long attempts,
       return true;
     }
     delay(retryDelayMs);
-    LOGINFO0("Connecting to WiFi..");
+    Serial.print("[WiFi Debug] Connecting to WiFi attempt ");
+    Serial.print(attempt + 1);
+    Serial.print(" status=");
+    Serial.println(WiFi.status());
   }
   return WiFi.status() == WL_CONNECTED;
 }
@@ -168,6 +262,7 @@ static bool connectToWiFi(const char *networkSsid, const char *networkPass,
   }
 
   LOGINFO1("Trying WiFi network:", label);
+  logWiFiCredentials("WiFi SSID:", String(networkSsid), String(networkPass));
   Display.setTextAlignment(PA_CENTER);
   Display.print(String("WiFi ") + label);
   WiFi.persistent(persistCredentials);
@@ -178,17 +273,21 @@ static bool connectToWiFi(const char *networkSsid, const char *networkPass,
 }
 
 static bool hasSavedWiFiConfig() {
-  const String savedSsid = wifiManager.getWiFiSSID();
-  return !savedSsid.isEmpty();
+  String savedSsid;
+  String savedPass;
+  return readStoredWiFiCredentials(savedSsid, savedPass);
 }
 
 static bool connectToSavedWiFi() {
-  const String savedSsid = wifiManager.getWiFiSSID();
-  if (savedSsid.isEmpty()) {
+  String savedSsid;
+  String savedPass;
+  if (!readStoredWiFiCredentials(savedSsid, savedPass)) {
+    Serial.println("[WiFi Debug] No saved WiFi credentials found in persistent storage");
     return false;
   }
 
   LOGINFO1("Trying saved WiFi network:", savedSsid);
+  logWiFiCredentials("Saved WiFi SSID:", savedSsid, savedPass);
   Display.setTextAlignment(PA_CENTER);
   Display.print(String("WiFi ") + savedSsid);
 
@@ -199,10 +298,25 @@ static bool connectToSavedWiFi() {
 }
 
 static void configureWiFiFallback() {
+  loadMQTTSettings();
+  const MQTTSettings &mqttSettings = getMQTTSettings();
+  char mqttPortBuffer[8];
+  snprintf(mqttPortBuffer, sizeof(mqttPortBuffer), "%u", mqttSettings.port);
+
+  mqttHostParam.setValue(mqttSettings.host, sizeof(mqttSettings.host));
+  mqttPortParam.setValue(mqttPortBuffer, strlen(mqttPortBuffer) + 1);
+  mqttUserParam.setValue(mqttSettings.user, sizeof(mqttSettings.user));
+  mqttPassParam.setValue(mqttSettings.pass, sizeof(mqttSettings.pass));
+
   wifiManager.setHostname(Hostname.c_str());
   wifiManager.setAPCallback(onConfigPortalStarted);
+  wifiManager.setSaveConfigCallback(onWiFiConfigSaved);
   wifiManager.setConfigPortalTimeout(0);
   wifiManager.setConnectTimeout(10);
+  wifiManager.addParameter(&mqttHostParam);
+  wifiManager.addParameter(&mqttPortParam);
+  wifiManager.addParameter(&mqttUserParam);
+  wifiManager.addParameter(&mqttPassParam);
 }
 
 void setup() {
@@ -239,8 +353,26 @@ void setup() {
 
   configureWiFiFallback();
 
+  const bool forcePortalMode = consumeForcedPortalMode();
+  String savedSsid;
+  String savedPass;
+
+  if (!readStoredWiFiCredentials(savedSsid, savedPass)) {
+    Serial.println("[WiFi Debug] Persistent WiFi storage is empty");
+  } else {
+    Serial.println("[WiFi Debug] Persistent WiFi storage is populated");
+    logWiFiCredentials("Persistent WiFi SSID:", savedSsid, savedPass);
+  }
+
+  logWiFiCredentials("Fallback WiFi SSID:", String(ssid), String(pass));
+
   bool wifiConnected = false;
-  if (hasSavedWiFiConfig()) {
+  if (forcePortalMode) {
+    LOGWARN0("Forced config portal requested");
+    const String apName = portalSSID();
+    showWifiSetupPortal(apName);
+    wifiConnected = wifiManager.startConfigPortal(apName.c_str());
+  } else if (hasSavedWiFiConfig()) {
     wifiConnected = connectToSavedWiFi();
   }
 
