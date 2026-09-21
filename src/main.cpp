@@ -1,5 +1,6 @@
 
 #include "MatrixRSS.h"
+#include "configstore.h"
 #include "debug.h"
 #include "mqtt.h"
 #include "secrets.h"
@@ -18,7 +19,6 @@
 #include <MD_MAX72xx.h>
 #include <MD_Parola.h>
 #include <Preferences.h>
-#include <esp_wifi.h>
 #include <WiFiManager.h>
 #include <stdio.h>
 #include <string.h>
@@ -205,9 +205,11 @@ static void onConfigPortalStarted(WiFiManager *manager) {
 }
 
 static void onWiFiConfigSaved() {
+  saveStoredWiFiSettings(wifiManager.getWiFiSSID().c_str(),
+                         wifiManager.getWiFiPass().c_str());
   saveMQTTSettings(mqttHostParam.getValue(), mqttPortParam.getValue(),
                    mqttUserParam.getValue(), mqttPassParam.getValue());
-  LOGINFO0("Saved MQTT settings from config portal");
+  LOGINFO0("Saved config from config portal");
 }
 
 static void logWiFiCredentials(const char *label, const String &networkSsid,
@@ -222,21 +224,15 @@ static void logWiFiCredentials(const char *label, const String &networkSsid,
 
 static bool readStoredWiFiCredentials(String &storedSsid,
                                       String &storedPassword) {
-  wifi_config_t wifiConfig = {};
-  if (esp_wifi_get_config(WIFI_IF_STA, &wifiConfig) != ESP_OK) {
+  char storedSsidBuffer[33] = {};
+  char storedPassBuffer[65] = {};
+  if (!loadStoredWiFiSettings(storedSsidBuffer, sizeof(storedSsidBuffer),
+                              storedPassBuffer, sizeof(storedPassBuffer))) {
     return false;
   }
 
-  char ssidBuffer[sizeof(wifiConfig.sta.ssid) + 1];
-  char passwordBuffer[sizeof(wifiConfig.sta.password) + 1];
-  memcpy(ssidBuffer, wifiConfig.sta.ssid, sizeof(wifiConfig.sta.ssid));
-  memcpy(passwordBuffer, wifiConfig.sta.password,
-         sizeof(wifiConfig.sta.password));
-  ssidBuffer[sizeof(wifiConfig.sta.ssid)] = '\0';
-  passwordBuffer[sizeof(wifiConfig.sta.password)] = '\0';
-
-  storedSsid = String(ssidBuffer);
-  storedPassword = String(passwordBuffer);
+  storedSsid = String(storedSsidBuffer);
+  storedPassword = String(storedPassBuffer);
   return !storedSsid.isEmpty();
 }
 
@@ -292,12 +288,13 @@ static bool connectToSavedWiFi() {
   Display.print(String("WiFi ") + savedSsid);
 
   WiFi.persistent(false);
-  WiFi.begin();
+  WiFi.begin(savedSsid.c_str(), savedPass.c_str());
   return waitForWiFiConnection(WIFI_CONNECT_ATTEMPTS,
                                WIFI_CONNECT_RETRY_DELAY_MS);
 }
 
 static void configureWiFiFallback() {
+  initConfigStorage();
   loadMQTTSettings();
   const MQTTSettings &mqttSettings = getMQTTSettings();
   char mqttPortBuffer[8];

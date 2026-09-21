@@ -1,10 +1,10 @@
 #include "mqtt.h"
 #include "MatrixRSS.h"
+#include "configstore.h"
 #include "contentcontainer.h"
 #include "debug.h"
 #include "secrets.h"
 #include <Arduino.h>
-#include <Preferences.h>
 #include <SPI.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
@@ -21,12 +21,6 @@
 #define MQTT_NEWS "rss/news"
 
 namespace {
-
-constexpr char kMQTTPrefsNamespace[] = "mqtt";
-constexpr char kMQTTHostKey[] = "host";
-constexpr char kMQTTPortKey[] = "port";
-constexpr char kMQTTUserKey[] = "user";
-constexpr char kMQTTPassKey[] = "pass";
 
 MQTTSettings mqttSettings;
 
@@ -206,38 +200,19 @@ void MQTT_callback(char *topic, byte *payload, unsigned int length) {
 
 void loadMQTTSettings() {
   resetMQTTSettingsToDefaults();
-
-  Preferences preferences;
-  if (!preferences.begin(kMQTTPrefsNamespace, true)) {
-    return;
-  }
-
-  copySetting(mqttSettings.host, sizeof(mqttSettings.host),
-              preferences.getString(kMQTTHostKey, mqttSettings.host));
-  mqttSettings.port =
-      static_cast<uint16_t>(preferences.getUShort(kMQTTPortKey, mqttSettings.port));
-  copySetting(mqttSettings.user, sizeof(mqttSettings.user),
-              preferences.getString(kMQTTUserKey, mqttSettings.user));
-  copySetting(mqttSettings.pass, sizeof(mqttSettings.pass),
-              preferences.getString(kMQTTPassKey, mqttSettings.pass));
-  preferences.end();
+  initConfigStorage();
+  loadStoredMQTTSettings(mqttSettings.host, sizeof(mqttSettings.host),
+                         &mqttSettings.port, mqttSettings.user,
+                         sizeof(mqttSettings.user), mqttSettings.pass,
+                         sizeof(mqttSettings.pass));
 }
 
 const MQTTSettings &getMQTTSettings() { return mqttSettings; }
 
 void saveMQTTSettings(const char *host, const char *port, const char *user,
                       const char *pass) {
-  Preferences preferences;
-  if (!preferences.begin(kMQTTPrefsNamespace, false)) {
-    return;
-  }
-
-  preferences.putString(kMQTTHostKey, host == nullptr ? "" : host);
-  preferences.putUShort(kMQTTPortKey, parsePort(port));
-  preferences.putString(kMQTTUserKey, user == nullptr ? "" : user);
-  preferences.putString(kMQTTPassKey, pass == nullptr ? "" : pass);
-  preferences.end();
-
+  initConfigStorage();
+  saveStoredMQTTSettings(host, parsePort(port), user, pass);
   loadMQTTSettings();
 }
 
