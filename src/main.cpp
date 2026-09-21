@@ -12,15 +12,18 @@
 #include <time.h>
 // #include "rssRead.hpp"
 #include "contentcontainer.h"
-#include "webinterface.h"
+#include "webInterface.h"
 #include <ArduinoJson.h>
 #include <AsyncTCP.h>
 #include <MD_MAX72xx.h>
 #include <MD_Parola.h>
+#include <WiFiManager.h>
 #include <stdio.h>
 #include <string.h>
 
 #define DISPLAY_TIMEOUT 60
+#define WIFI_CONNECT_ATTEMPTS 20
+#define WIFI_CONNECT_RETRY_DELAY_MS 500
 // Matrix Display params
 
 #define DATA_PIN 12
@@ -123,6 +126,84 @@ JsonDocument statusObject;
 webInterface web;
 
 unsigned long ota_progress_millis = 0;
+WiFiManager wifiManager;
+
+static String portalSSID() {
+  return Hostname + String("_Setup");
+}
+
+static void showWifiSetupPortal(const String &apName) {
+  Display.setTextAlignment(PA_CENTER);
+  Display.print("WiFi setup");
+  delay(1000);
+  Display.print(apName);
+  delay(1000);
+  Display.print("192.168.4.1");
+  IPaddress = "192.168.4.1";
+}
+
+static void onConfigPortalStarted(WiFiManager *manager) {
+  (void)manager;
+  const String apName = portalSSID();
+  LOGWARN1("WiFi fallback AP active:", apName);
+  showWifiSetupPortal(apName);
+}
+
+static bool waitForWiFiConnection(unsigned long attempts,
+                                  unsigned long retryDelayMs) {
+  for (unsigned long attempt = 0; attempt < attempts; ++attempt) {
+    if (WiFi.status() == WL_CONNECTED) {
+      return true;
+    }
+    delay(retryDelayMs);
+    LOGINFO0("Connecting to WiFi..");
+  }
+  return WiFi.status() == WL_CONNECTED;
+}
+
+static bool connectToWiFi(const char *networkSsid, const char *networkPass,
+                          const char *label, bool persistCredentials) {
+  if (networkSsid == nullptr || strlen(networkSsid) == 0) {
+    return false;
+  }
+
+  LOGINFO1("Trying WiFi network:", label);
+  Display.setTextAlignment(PA_CENTER);
+  Display.print(String("WiFi ") + label);
+  WiFi.persistent(persistCredentials);
+  WiFi.begin(networkSsid, networkPass);
+  WiFi.persistent(false);
+  return waitForWiFiConnection(WIFI_CONNECT_ATTEMPTS,
+                               WIFI_CONNECT_RETRY_DELAY_MS);
+}
+
+static bool hasSavedWiFiConfig() {
+  const String savedSsid = wifiManager.getWiFiSSID();
+  return !savedSsid.isEmpty();
+}
+
+static bool connectToSavedWiFi() {
+  const String savedSsid = wifiManager.getWiFiSSID();
+  if (savedSsid.isEmpty()) {
+    return false;
+  }
+
+  LOGINFO1("Trying saved WiFi network:", savedSsid);
+  Display.setTextAlignment(PA_CENTER);
+  Display.print(String("WiFi ") + savedSsid);
+
+  WiFi.persistent(false);
+  WiFi.begin();
+  return waitForWiFiConnection(WIFI_CONNECT_ATTEMPTS,
+                               WIFI_CONNECT_RETRY_DELAY_MS);
+}
+
+static void configureWiFiFallback() {
+  wifiManager.setHostname(Hostname.c_str());
+  wifiManager.setAPCallback(onConfigPortalStarted);
+  wifiManager.setConfigPortalTimeout(0);
+  wifiManager.setConnectTimeout(10);
+}
 
 void setup() {
   strcpy(currententry, "Initializing");
@@ -156,13 +237,31 @@ void setup() {
   }
 #endif
 
-  WiFi.begin(ssid, pass);
+  configureWiFiFallback();
 
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    LOGINFO0("Connecting to WiFi..");
+  bool wifiConnected = false;
+  if (hasSavedWiFiConfig()) {
+    wifiConnected = connectToSavedWiFi();
   }
-IPaddress=WiFi.localIP().toString();
+
+  if (!wifiConnected) {
+    wifiConnected = connectToWiFi(ssid, pass, ssid, false);
+  }
+
+  if (!wifiConnected) {
+    LOGWARN0("WiFi connection failed, starting setup AP");
+    const String apName = portalSSID();
+    showWifiSetupPortal(apName);
+    wifiConnected = wifiManager.startConfigPortal(apName.c_str());
+  }
+
+  if (!wifiConnected) {
+    LOGERROR0("WiFi setup portal exited without a connection");
+    Display.print("WiFi failed");
+    ESP.restart();
+  }
+
+  IPaddress = WiFi.localIP().toString();
   LOGINFO0("Connected to the WiFi network");
   LOGINFO0(IPaddress);
   LOGINFO0("Starting UDP");

@@ -14,3 +14,5 @@ include/pages/RssMatrix.css.h
 WEBSources/update-min.html
 WEBSources/RssMatrix-min.css
 include/pages/update.html.h
+include/secrets.h.org
+include/secrets.h.modified
